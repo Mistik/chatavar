@@ -1,0 +1,16 @@
+{
+  "name": "chatavar",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm install --legacy-peer-deps --prefix server && npm install --legacy-peer-deps --prefix client",
+    "dev":         "concurrently -n server,client -c cyan,magenta \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev:server":  "npm run dev --prefix server",
+    "dev:client":  "npm run dev --prefix client",
+    "build":       "npm run build --prefix client",
+    "start":       "npm run start --prefix server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
