@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { X, MessageCircle, UserPlus, Check, MapPin, Calendar, User,
-         UserMinus, Ban, ShieldOff } from 'lucide-react';
+         UserMinus, Ban, ShieldOff, Flag } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import Avatar from './Avatar';
+import api from '../utils/api';
 
 const GENDER_LABELS = { M:'Male', F:'Female', NB:'Non-binary', Other:'Other' };
 
@@ -10,10 +11,13 @@ export default function ProfilePanel() {
   const { profilePanelUser: user, setProfilePanelUser,
           onlineUsers, friends, socket, blockedUsers,
           setActiveChat, friendRequests, clearUnread,
-          removeFriend, addBlocked, removeBlocked } = useStore();
+          removeFriend, addBlocked, removeBlocked, addToast } = useStore();
 
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [confirmBlock,    setConfirmBlock]    = useState(false);
+  const [reportOpen,      setReportOpen]      = useState(false);
+  const [reportReason,    setReportReason]    = useState('');
+  const [reported,        setReported]        = useState(false);
 
   if (!user) return null;
 
@@ -189,6 +193,49 @@ export default function ProfilePanel() {
             onClick={handleUnblock}>
             <ShieldOff size={14} /> Unblock {user.username}
           </button>
+        )}
+
+        {/* Report */}
+        {!reported && !reportOpen && (
+          <button className="btn btn-ghost" style={{ width:'100%', justifyContent:'center', gap:7, color:'var(--text3)', fontSize:12 }}
+            onClick={() => setReportOpen(true)}>
+            <Flag size={13} /> Report {user.username}
+          </button>
+        )}
+        {reportOpen && (
+          <div style={{ background:'var(--surface2)', borderRadius:'var(--radius)', padding:12, display:'flex', flexDirection:'column', gap:8 }}>
+            <div style={{ fontSize:12, fontWeight:600, color:'var(--text2)' }}>Report {user.username}</div>
+            <select className="form-input" value={reportReason} onChange={e => setReportReason(e.target.value)}
+              style={{ fontSize:12, padding:'6px 10px', cursor:'pointer' }}>
+              <option value="">Select a reason…</option>
+              <option value="harassment">Harassment or bullying</option>
+              <option value="spam">Spam</option>
+              <option value="inappropriate">Inappropriate content</option>
+              <option value="impersonation">Impersonation</option>
+              <option value="hate_speech">Hate speech</option>
+              <option value="other">Other</option>
+            </select>
+            <div style={{ display:'flex', gap:8 }}>
+              <button className="btn btn-ghost btn-sm" style={{ flex:1, justifyContent:'center' }}
+                onClick={() => { setReportOpen(false); setReportReason(''); }}>Cancel</button>
+              <button className="btn btn-danger btn-sm" style={{ flex:1, justifyContent:'center' }}
+                disabled={!reportReason}
+                onClick={async () => {
+                  try {
+                    await api.post(`/users/${user.username}/report`, { reason: reportReason });
+                    addToast({ icon:'🚩', title:'Report submitted', message:'Thank you for reporting.' });
+                    setReported(true); setReportOpen(false);
+                  } catch (e) { addToast({ icon:'⚠️', title:'Error', message: e.response?.data?.error || 'Failed' }); }
+                }}>
+                <Flag size={11}/> Submit Report
+              </button>
+            </div>
+          </div>
+        )}
+        {reported && (
+          <div style={{ textAlign:'center', fontSize:12, color:'var(--text3)', padding:'8px 0' }}>
+            <Flag size={12} style={{ verticalAlign:'middle', marginRight:4 }}/> Report submitted
+          </div>
         )}
       </div>
     </div>

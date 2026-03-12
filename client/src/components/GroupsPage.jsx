@@ -154,7 +154,7 @@ export default function GroupsPage({ onOpenGroup, onPrivateMessages }) {
 
       {/* ── Nav ── */}
       <nav style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 32px', height:52, borderBottom:'1px solid #e8e8e8' }}>
-        <div onClick={() => navigate('/')} style={{ fontSize:24, fontWeight:300, color:'#aaa', letterSpacing:-.5, cursor:'pointer' }}>chatavar</div>
+        <div onClick={() => navigate('/' + currentUser?.username)} style={{ fontSize:24, fontWeight:300, color:'#aaa', letterSpacing:-.5, cursor:'pointer' }}>chatavar</div>
         <div style={{ display:'flex', alignItems:'center', gap:24, fontSize:13, color:'#2196F3' }}>
           {currentUser && (
             <button onClick={() => navigate('/' + currentUser.username + '/chat')} style={{ background:'none', border:'none', color:'#2196F3', fontSize:13, cursor:'pointer', padding:0 }}>

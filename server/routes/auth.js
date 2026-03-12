@@ -86,4 +86,66 @@ router.put('/profile', requireAuth, (req, res) => {
   res.json({ user: db.publicProfile(updated) });
 });
 
+// ─── Change password ──────────────────────────────────────────────────────────
+router.put('/password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword)
+      return res.status(400).json({ error: 'Current and new password required' });
+    if (newPassword.length < 4)
+      return res.status(400).json({ error: 'New password must be at least 4 characters' });
+
+    const user = db.getUserById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const newHash = await bcrypt.hash(newPassword, bcryptRounds);
+    // Direct DB update for password
+    const rawDb = db.__rawDb;
+    if (rawDb) {
+      rawDb.run(`UPDATE users SET password_hash = ? WHERE id = ?`, [newHash, req.userId]);
+    }
+    res.json({ ok: true, message: 'Password changed successfully' });
+  } catch (err) {
+    console.error('[password]', err);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+// ─── Delete account ───────────────────────────────────────────────────────────
+router.delete('/account', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Password required to confirm deletion' });
+
+    const user = db.getUserById(req.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Incorrect password' });
+
+    const rawDb = db.__rawDb;
+    if (rawDb) {
+      // Delete user's groups
+      const groups = db.getGroupsByOwner(req.userId);
+      for (const g of groups) db.deleteGroup(g.id);
+      // Remove friendships, friend requests, blocks
+      rawDb.run(`DELETE FROM friendships WHERE user_id = ? OR friend_id = ?`, [req.userId, req.userId]);
+      rawDb.run(`DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?`, [req.userId, req.userId]);
+      rawDb.run(`DELETE FROM blocks WHERE blocker_id = ? OR blocked_id = ?`, [req.userId, req.userId]);
+      // Remove from group memberships and moderator roles
+      rawDb.run(`DELETE FROM group_members WHERE user_id = ?`, [req.userId]);
+      rawDb.run(`DELETE FROM moderators WHERE user_id = ?`, [req.userId]);
+      // Delete the user
+      rawDb.run(`DELETE FROM users WHERE id = ?`, [req.userId]);
+    }
+    res.json({ ok: true, message: 'Account deleted' });
+  } catch (err) {
+    console.error('[delete-account]', err);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 module.exports = router;

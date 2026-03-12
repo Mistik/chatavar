@@ -63,47 +63,33 @@ export default function AuthModal({ onClose, onSuccess, title = 'Group owner' })
         )}
 
         {/* Username */}
-        <div style={{ position:'relative', marginBottom:10 }}>
+        <div style={{ marginBottom:10 }}>
           <input value={username} onChange={e => setUsername(e.target.value)}
             placeholder="Username"
             autoComplete="username"
             onKeyDown={e => e.key === 'Enter' && submit(mode)}
             style={{
-              width:'100%', padding:'12px 50px 12px 14px',
+              width:'100%', padding:'12px 14px',
               border:'1px solid #ddd', borderRadius:4,
               fontSize:15, fontFamily:'inherit', outline:'none',
               boxSizing:'border-box',
             }}
           />
-          <div style={{
-            position:'absolute', right:8, top:'50%', transform:'translateY(-50%)',
-            background:'#CC0000', borderRadius:4, padding:'4px 8px',
-            display:'flex', gap:3,
-          }}>
-            {[0,1,2].map(i => <div key={i} style={{ width:4,height:4,borderRadius:'50%',background:'#fff' }}/>)}
-          </div>
         </div>
 
         {/* Password */}
-        <div style={{ position:'relative', marginBottom:20 }}>
+        <div style={{ marginBottom:20 }}>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)}
             placeholder="Password"
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             onKeyDown={e => e.key === 'Enter' && submit(mode)}
             style={{
-              width:'100%', padding:'12px 50px 12px 14px',
+              width:'100%', padding:'12px 14px',
               border:'1px solid #ddd', borderRadius:4,
               fontSize:15, fontFamily:'inherit', outline:'none',
               boxSizing:'border-box',
             }}
           />
-          <div style={{
-            position:'absolute', right:8, top:'50%', transform:'translateY(-50%)',
-            background:'#CC0000', borderRadius:4, padding:'4px 8px',
-            display:'flex', gap:3,
-          }}>
-            {[0,1,2].map(i => <div key={i} style={{ width:4,height:4,borderRadius:'50%',background:'#fff' }}/>)}
-          </div>
         </div>
 
         {/* Buttons */}

@@ -23,6 +23,7 @@ import LandingPage       from './components/LandingPage';
 import GroupsPage        from './components/GroupsPage';
 import GroupChatWindow   from './components/GroupChatWindow';
 import CreateGroupPage   from './components/CreateGroupPage';
+import HelpPage          from './components/HelpPage';
 import api               from './utils/api';
 import { navigate }      from './utils/navigate';
 export { navigate };
@@ -38,8 +39,9 @@ function getRoute() {
   if (chatMatch) return { type: 'chat', username: chatMatch[1] };
   if (path.startsWith('/new-group')) return { type: 'new-group' };
   if (path === '/get-started') return { type: 'get-started' };
+  if (path === '/help') return { type: 'help' };
   const dashMatch = path.match(/^\/([^/]+)$/);
-  if (dashMatch && !['widget-login','embed.js','health'].includes(dashMatch[1]))
+  if (dashMatch && !['widget-login','embed.js','health','help'].includes(dashMatch[1]))
     return { type: 'dashboard', username: dashMatch[1] };
   return { type: 'landing' };
 }
@@ -69,7 +71,7 @@ function ChatApp({ username }) {
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { currentUser } = useStore();
+  const { currentUser, logout } = useStore();
   const [route,    setRoute]    = useState(getRoute);
   const [groupObj, setGroupObj] = useState(null);
 
@@ -118,6 +120,14 @@ export default function App() {
     );
   }
 
+  // ── /help ──────────────────────────────────────────────────────────────────
+  if (route.type === 'help') {
+    return <HelpPage
+      onBack={() => navigate(currentUser ? `/${currentUser.username}` : '/')}
+      onLogout={currentUser ? () => { logout(); navigate('/'); } : null}
+    />;
+  }
+
   // ── /:username/chat ───────────────────────────────────────────────────────
   if (route.type === 'chat') {
     if (!currentUser || currentUser.username.toLowerCase() !== route.username.toLowerCase()) {
@@ -148,9 +158,11 @@ export default function App() {
 
   // ── /get-started — show landing with auth modal open ─────────────────────
   if (route.type === 'get-started') {
+    if (currentUser) { navigate(`/${currentUser.username}`, true); return null; }
     return <LandingPage onGetStarted={() => navigate('/get-started')} forceAuth />;
   }
 
-  // ── / — Landing ───────────────────────────────────────────────────────────
+  // ── / — Landing (logged-in users always redirect to dashboard) ──────────
+  if (currentUser) { navigate(`/${currentUser.username}`, true); return null; }
   return <LandingPage onGetStarted={() => navigate('/get-started')} />;
 }

@@ -1,75 +1,65 @@
 # Chatavar
 
-Open source Chatango clone. Create group chats and embed them on any website.
-
----
+A Chatango-style embeddable chat platform — group chat rooms, private messaging, moderation tools, and embeddable widgets for any website.
 
 ## Features
 
-- Group chats with embeddable chatboxes (Box, Tab, or floating button)
-- Private messaging between registered users
-- Guest chat — no account needed, just pick a name
-- Friend requests and blocking
-- Live embed configurator with color picker and mobile preview
-- Widget iframe that runs on external sites via a single script tag
+### Core
+- Registration & login with JWT auth
+- Private messaging (stored in browser localStorage, not on server)
+- Group chat rooms with persistent SQLite message history
+- Friends system with send/accept/decline requests
+- Real-time online presence across multiple tabs
+- Profile with avatar upload, bio, age, gender, location
+- Embeddable group widget (Box, Ticker, Tab layouts) via `embed.js`
+- Embeddable PM widget (mini chat box for personal sites) via `pm-embed.js`
 
-## Tech
+### Moderation
+- Moderator roles — owner / admin / mod permission levels
+- Ban, IP ban, easy ban (ban + delete all messages in one click)
+- Timed mutes (5 min, 1 hour, custom)
+- Delete single messages or all messages by a user
+- Banned words — word parts + exact match with leet-speak resilience
+- Shadow blocking — "only to author" mode (sender sees message, nobody else does)
+- Chat restrictions — no anons, broadcast mode, closed without mods, slow mode, ban links/images
+- Moderation log — full audit trail
+- Periodic announcements — auto-posting system messages at set intervals
+- 6-tab mod admin panel (Restrictions, Banned Words, Moderators, Announcements, Ban List, Mod Log)
 
-Server: Node.js + Express + Socket.io + uWebSockets.js + SQLite  
-Client: React + Zustand + Webpack
+### User Settings (7-tab panel)
+- Blocked users management
+- Privacy — hide from Members, control who can PM, allow/block anon messages
+- Colored messages — custom text and background colour per user
+- B&W toggle — disable other users' colours
+- Notification sounds — ping / pop / chime / none (Web Audio API, no files)
+- Volume control
+- PM Embed — generate embed code for personal site chat widget
+- Password change with current password verification
+- Account deletion with two-step confirmation and cascading cleanup
 
-## Running locally
+### Safety
+- Block/unblock users (also blocks their IP)
+- Report abuse with reason selector, auto-restricts after 5 unique reports
+- Restricted users system
+
+### Help Center
+- `/help` — Chatango-identical layout with Site owners / Users tabs and 45+ help articles
+
+## Setup
 
 ```bash
-git clone https://github.com/yourname/chatavar
-cd chatavar
 npm install
+cd server && npm install && cd ..
+cd client && npm install && cd ..
+cp .env.example .env
+cp server/.env.example server/.env
+
+# Run both
 npm run dev
 ```
 
-Client → `localhost:3000`, API → `localhost:3001`, WebSocket → `localhost:3002`
-
-## Environment
-
-Create `server/.env`:
-
-```
-PORT=3001
-WS_PORT=3002
-JWT_SECRET=something_secret
-JWT_EXPIRY=30d
-CLIENT_URL=http://localhost:3000
-DB_PATH=./data/chatavar.db
-```
-
-## Production
-
-```bash
-npm run build
-npm start
-```
-
-Server serves the built client from `client/dist/`. Works fine behind nginx or on a bare VPS with PM2.
-
-## Embedding
-
-After creating a group, drop this on your site:
-
-```html
-<script>
-  window.chatavar_group = "your-group-name";
-  window.chatavar_color = "CC0000";
-</script>
-<script src="https://yourdomain.com/embed.js" async></script>
-```
-
-## Caveats
-
-- SQLite is fine for low traffic. For anything bigger, swap out `server/db.js` for Postgres.
-- DMs are stored in localStorage and relayed in memory — they don't sync across devices.
-- No image uploads yet, avatars are URLs only.
-- Change `JWT_SECRET` before deploying, it defaults to a plaintext string in dev.
-
-## License
-
-MIT
+## Tech Stack
+- **Server:** Node.js, Express, Socket.io, uWebSockets.js, sql.js (SQLite), bcryptjs, JWT
+- **Client:** React, Zustand, Webpack, Lucide icons, date-fns
+- **Real-time:** WebSocket via Socket.io over uWebSockets.js
+- **Database:** SQLite via sql.js, file-backed with debounced writes

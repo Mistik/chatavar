@@ -55,7 +55,7 @@ function getSocketIds(userId) {
 
 /**
  * Returns an array of public profiles for every unique online user.
- * Pulls fresh profile data from the DB on each call.
+ * Filters out users who have set show_in_members to 0.
  */
 function getOnlineUsers() {
   const seen    = new Set();
@@ -64,7 +64,13 @@ function getOnlineUsers() {
     if (seen.has(userId)) continue;
     seen.add(userId);
     const user = db.getUserById(userId);
-    if (user) results.push(db.publicProfile(user));
+    if (user) {
+      // Check privacy settings — hide from members list if opted out
+      const settings = db.getUserSettings(userId);
+      const profile = db.publicProfile(user);
+      profile._hidden = !settings.show_in_members; // flag but still include for friends
+      results.push(profile);
+    }
   }
   return results;
 }

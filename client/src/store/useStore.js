@@ -112,4 +112,14 @@ export const useStore = create((set, get) => ({
   // ── Settings panel ────────────────────────────────────────────────────────
   settingsOpen: false,
   setSettingsOpen: (v) => set({ settingsOpen: v }),
+
+  // ── User settings (privacy, colors, sounds) ──────────────────────────────
+  userSettings: {
+    show_in_members: 1, allow_anon_pm: 1, pm_from: 'everyone',
+    save_conversations: 1, msg_color: '', msg_bg_color: '',
+    show_colors: 1, msg_sound: 'ping', msg_volume: 80,
+  },
+  setUserSettings: (s) => set({ userSettings: s }),
+  updateUserSettings: (updates) =>
+    set((s) => ({ userSettings: { ...s.userSettings, ...updates } })),
 }));

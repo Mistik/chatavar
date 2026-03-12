@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Users, Hash, Settings, Send, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Users, Hash, Settings, Send, ChevronDown, Shield } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import api from '../utils/api';
+import GroupModPanel from './GroupModPanel';
 
 // ── Avatar initials ───────────────────────────────────────────────────────────
 const COLORS = ['#5865f2','#3ba55c','#ed4245','#faa61a','#eb459e','#00b0f4','#1abc9c'];
@@ -49,36 +50,86 @@ function TypingIndicator({ typers }) {
   );
 }
 
-// ── Single message ────────────────────────────────────────────────────────────
-function Message({ msg, prevMsg, accent }) {
+// ── Single message (with mod controls + colored messages) ─────────────────────
+function Message({ msg, prevMsg, accent, modRole, onDelete, onBan, onMute, showColors }) {
+  const [hover, setHover] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const sameAuthor = prevMsg && prevMsg.author.username === msg.author.username
     && (msg.createdAt - prevMsg.createdAt) < 5 * 60 * 1000;
+
+  // Author's color preferences (only applied when showColors is true)
+  const textColor = showColors && msg.author?.msgColor ? msg.author.msgColor : 'var(--text)';
+  const bgColor = showColors && msg.author?.msgBgColor ? msg.author.msgBgColor : 'transparent';
 
   return (
     <div style={{
       display:'flex', gap:10, padding: sameAuthor ? '1px 16px' : '8px 16px 1px',
-      alignItems:'flex-start',
-    }}>
+      alignItems:'flex-start', position:'relative',
+    }} onMouseEnter={() => setHover(true)} onMouseLeave={() => { setHover(false); setMenuOpen(false); }}>
       <div style={{ width:30, flexShrink:0, paddingTop:2 }}>
         {!sameAuthor && <MsgAvatar username={msg.author.username} avatar={msg.author.avatar} />}
       </div>
       <div style={{ flex:1, minWidth:0 }}>
         {!sameAuthor && (
           <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:2 }}>
-            <span style={{ fontWeight:700, fontSize:13.5, color: msg.author.isRegistered ? accent : 'var(--text)' }}>
+            <span style={{ fontWeight:700, fontSize:13.5,
+              color: showColors && msg.author?.msgColor ? msg.author.msgColor : (msg.author.isRegistered ? accent : 'var(--text)'),
+              cursor: modRole ? 'pointer' : 'default' }}
+              onClick={() => modRole && msg.author.isRegistered && setMenuOpen(v => !v)}>
               {msg.author.username}
             </span>
             {msg.author.isRegistered && (
               <span style={{ fontSize:9, background:'rgba(88,101,242,.12)', color:accent,
                              borderRadius:99, padding:'1px 5px', fontWeight:800 }}>✓</span>
             )}
+            {msg.isAnnouncement && (
+              <span style={{ fontSize:9, background:'rgba(245,158,11,.15)', color:'#d97706',
+                             borderRadius:99, padding:'1px 5px', fontWeight:800 }}>AUTO</span>
+            )}
             <span style={{ fontSize:11, color:'var(--text3)' }}>{fmtTime(msg.createdAt)}</span>
           </div>
         )}
-        <div style={{ fontSize:14, color:'var(--text)', lineHeight:1.55, wordBreak:'break-word', whiteSpace:'pre-wrap' }}>
+        <div style={{
+          fontSize:14, color: textColor, lineHeight:1.55, wordBreak:'break-word', whiteSpace:'pre-wrap',
+          background: bgColor, borderRadius: bgColor !== 'transparent' ? 4 : 0,
+          padding: bgColor !== 'transparent' ? '2px 6px' : 0,
+        }}>
           {msg.body}
         </div>
       </div>
+      {/* Mod delete button */}
+      {modRole && hover && (
+        <div style={{ position:'absolute', right:12, top:4, display:'flex', gap:4 }}>
+          <button onClick={() => onDelete(msg.id)} title="Delete message"
+            style={{ width:22, height:22, borderRadius:4, border:'none', background:'var(--surface2)',
+              color:'var(--text3)', cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center' }}>✕</button>
+        </div>
+      )}
+      {/* Mod user actions menu */}
+      {menuOpen && modRole && msg.author.isRegistered && (
+        <div style={{
+          position:'absolute', left:42, top:0, background:'var(--surface)', border:'1px solid var(--border)',
+          borderRadius:8, padding:4, zIndex:20, boxShadow:'0 4px 16px rgba(0,0,0,.15)', minWidth:140,
+        }}>
+          <div style={{ padding:'4px 10px', fontSize:12, color:'var(--text3)', fontWeight:700 }}>{msg.author.username}</div>
+          <div onClick={() => { onMute(msg.author.username, 300); setMenuOpen(false); }}
+            style={{ padding:'6px 10px', fontSize:13, cursor:'pointer', borderRadius:4, color:'var(--text)' }}
+            onMouseEnter={e => e.target.style.background='var(--surface2)'} onMouseLeave={e => e.target.style.background='transparent'}>
+            🔇 Mute 5 min</div>
+          <div onClick={() => { onMute(msg.author.username, 3600); setMenuOpen(false); }}
+            style={{ padding:'6px 10px', fontSize:13, cursor:'pointer', borderRadius:4, color:'var(--text)' }}
+            onMouseEnter={e => e.target.style.background='var(--surface2)'} onMouseLeave={e => e.target.style.background='transparent'}>
+            🔇 Mute 1 hour</div>
+          <div onClick={() => { onBan(msg.author.username, false); setMenuOpen(false); }}
+            style={{ padding:'6px 10px', fontSize:13, cursor:'pointer', borderRadius:4, color:'#ed4245' }}
+            onMouseEnter={e => e.target.style.background='var(--surface2)'} onMouseLeave={e => e.target.style.background='transparent'}>
+            🚫 Ban</div>
+          <div onClick={() => { onBan(msg.author.username, true); setMenuOpen(false); }}
+            style={{ padding:'6px 10px', fontSize:13, cursor:'pointer', borderRadius:4, color:'#ed4245' }}
+            onMouseEnter={e => e.target.style.background='var(--surface2)'} onMouseLeave={e => e.target.style.background='transparent'}>
+            ⚡ Easy Ban (ban + delete all)</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -142,7 +193,8 @@ function EditPanel({ group, onClose, onUpdated }) {
 
 // ── Main GroupChatWindow ──────────────────────────────────────────────────────
 export default function GroupChatWindow({ group: initialGroup, onBack }) {
-  const { currentUser, socket } = useStore();
+  const { currentUser, socket, userSettings } = useStore();
+  const showColors = userSettings?.show_colors !== 0;
   const [group,     setGroup]     = useState(initialGroup);
   const [messages,  setMessages]  = useState([]);
   const [input,     setInput]     = useState('');
@@ -153,11 +205,50 @@ export default function GroupChatWindow({ group: initialGroup, onBack }) {
   const [onlineCount, setOnlineCount] = useState(1);
   const [typers,    setTypers]    = useState([]);
   const [showEdit,  setShowEdit]  = useState(false);
+  const [showMod,   setShowMod]   = useState(false);
   const [atBottom,  setAtBottom]  = useState(true);
+  const [modRole,   setModRole]   = useState(null);
   const messagesRef = useRef(null);
   const typingTimer = useRef(null);
   const accent = `#${group.accent_color || '5865f2'}`;
   const isOwner = currentUser?.id === group.owner_id;
+
+  // Fetch mod role
+  useEffect(() => {
+    if (!currentUser) return;
+    api.get(`/groups/${group.name}/my-role`).then(({ data }) => setModRole(data.role)).catch(() => {});
+  }, [group.name, currentUser?.id]);
+
+  // Listen for moderation events (dispatched from useSocket via window events)
+  useEffect(() => {
+    const onDeleted = (e) => {
+      if (e.detail.groupId === group.id)
+        setMessages(prev => prev.filter(m => m.id !== e.detail.messageId));
+    };
+    const onBanned = (e) => {
+      if (e.detail.groupId === group.id && e.detail.deleteMessages)
+        setMessages(prev => prev.filter(m => m.author?.id !== e.detail.userId));
+    };
+    window.addEventListener('cv:msg_deleted', onDeleted);
+    window.addEventListener('cv:user_banned', onBanned);
+    return () => {
+      window.removeEventListener('cv:msg_deleted', onDeleted);
+      window.removeEventListener('cv:user_banned', onBanned);
+    };
+  }, [group.id]);
+
+  // Mod action callbacks
+  const handleDeleteMsg = (msgId) => {
+    socket?.emit('mod_delete_message', { groupName: group.name, messageId: msgId });
+    setMessages(prev => prev.filter(m => m.id !== msgId));
+  };
+  const handleBanUser = (username, easyBan) => {
+    socket?.emit('mod_ban_user', { groupName: group.name, targetUsername: username, deleteMessages: easyBan });
+    if (easyBan) setMessages(prev => prev.filter(m => m.author?.username !== username));
+  };
+  const handleMuteUser = (username, duration) => {
+    socket?.emit('mod_mute_user', { groupName: group.name, targetUsername: username, duration });
+  };
 
   // Load message history
   useEffect(() => {
@@ -298,8 +389,14 @@ export default function GroupChatWindow({ group: initialGroup, onBack }) {
                 {onlineCount} online · {group.member_count || 0} members
               </div>
             </div>
+            {modRole && (
+              <button className="btn btn-ghost btn-icon" onClick={() => { setShowMod(v=>!v); setShowEdit(false); }}
+                title="Moderation" style={{ color: showMod ? 'var(--accent)' : '' }}>
+                <Shield size={15}/>
+              </button>
+            )}
             {isOwner && (
-              <button className="btn btn-ghost btn-icon" onClick={() => setShowEdit(v=>!v)} title="Group settings">
+              <button className="btn btn-ghost btn-icon" onClick={() => { setShowEdit(v=>!v); setShowMod(false); }} title="Group settings">
                 <Settings size={15}/>
               </button>
             )}
@@ -337,7 +434,8 @@ export default function GroupChatWindow({ group: initialGroup, onBack }) {
               </div>
             )}
             {messages.map((m,i) => (
-              <Message key={m.id} msg={m} prevMsg={messages[i-1] || null} accent={accent} />
+              <Message key={m.id} msg={m} prevMsg={messages[i-1] || null} accent={accent}
+                modRole={modRole} onDelete={handleDeleteMsg} onBan={handleBanUser} onMute={handleMuteUser} showColors={showColors} />
             ))}
             <TypingIndicator typers={typers} />
           </div>
@@ -403,6 +501,10 @@ export default function GroupChatWindow({ group: initialGroup, onBack }) {
         {/* Settings sidebar */}
         {showEdit && isOwner && (
           <EditPanel group={group} onClose={()=>setShowEdit(false)} onUpdated={setGroup} />
+        )}
+        {/* Moderation panel */}
+        {showMod && modRole && (
+          <GroupModPanel groupName={group.name} isOwner={isOwner} onClose={()=>setShowMod(false)} />
         )}
       </div>
 

@@ -5,6 +5,8 @@ const fs          = require('fs');
 const authRoutes  = require('./routes/auth');
 const userRoutes  = require('./routes/users');
 const groupRoutes = require('./routes/groups');
+const helpRoutes  = require('./routes/help');
+const modRoutes   = require('./routes/moderation');
 const config      = require('./config');
 
 const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
@@ -229,10 +231,253 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 </body></html>`);
   });
 
+  // ── /pm-embed.js — loader script for private chat mini box on external sites ─
+  app.get('/pm-embed.js', (req, res) => {
+    const SERVER = `${req.protocol}://${req.get('host')}`;
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send(`
+(function(){
+  var cfg = window.chatavar_pm || {};
+  if(!cfg.user){console.warn('[chatavar] window.chatavar_pm.user is required');return;}
+  var server = '${SERVER}';
+  var color  = (cfg.color||'0088ff').replace('#','');
+  var corner = cfg.corner||'bottom-right';
+  var label  = cfg.label||'Message '+cfg.user;
+
+  var isRight = corner==='bottom-right';
+  var wrap = document.createElement('div');
+  wrap.id = 'cv-pm-wrap';
+  Object.assign(wrap.style,{position:'fixed',zIndex:'99999',bottom:'0'},
+    isRight?{right:'0'}:{left:'0'});
+
+  // Status dot — updated via polling
+  var dot = document.createElement('span');
+  Object.assign(dot.style,{width:'8px',height:'8px',borderRadius:'50%',
+    background:'#999',display:'inline-block',marginRight:'6px',transition:'background .3s'});
+
+  // Tab button
+  var tab = document.createElement('div');
+  tab.appendChild(dot);
+  tab.appendChild(document.createTextNode(label));
+  Object.assign(tab.style,{
+    background:'#'+color,color:'#fff',padding:'8px 18px',cursor:'pointer',
+    fontFamily:'-apple-system,sans-serif',fontSize:'13px',fontWeight:'700',
+    userSelect:'none',display:'flex',alignItems:'center',
+    borderRadius:isRight?'8px 0 0 0':'0 8px 0 0'});
+
+  // Chat frame
+  var box = document.createElement('div');
+  box.style.cssText = 'display:none;';
+  var f = document.createElement('iframe');
+  f.src = server+'/pm/'+encodeURIComponent(cfg.user)+'?color='+color;
+  f.style.border='none';
+  f.width = cfg.width||280;
+  f.height = cfg.height||380;
+  f.setAttribute('allowtransparency','true');
+  f.title = 'Chat with '+cfg.user;
+  box.appendChild(f);
+
+  var open = false;
+  tab.onclick = function(){open=!open;box.style.display=open?'block':'none';};
+
+  wrap.appendChild(box);
+  wrap.appendChild(tab);
+  document.body.appendChild(wrap);
+
+  // Poll online status every 15s
+  function checkStatus(){
+    fetch(server+'/api/users/'+encodeURIComponent(cfg.user))
+      .then(function(r){return r.json()})
+      .then(function(d){dot.style.background=d.user&&d.user.online?'#22c55e':'#999'})
+      .catch(function(){});
+  }
+  checkStatus();
+  setInterval(checkStatus,15000);
+})();
+`);
+  });
+
+  // ── /pm/:username — self-contained private chat iframe page ─────────────
+  app.get('/pm/:username', (req, res) => {
+    const db = require('./db');
+    const presence = require('./presence');
+    const target = db.getUserByUsername(req.params.username);
+    if (!target) return res.status(404).send('<h3>User not found</h3>');
+
+    const color = (req.query.color || '0088ff').replace('#', '');
+    const server = `${req.protocol}://${req.get('host')}`;
+    const isOnline = presence.isOnline(target.id);
+
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    res.setHeader('Content-Security-Policy', "frame-ancestors *");
+    res.send(`<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chat with ${target.username}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{display:flex;flex-direction:column;background:#fff}
+.hdr{padding:10px 14px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.hdr-avatar{width:32px;height:32px;border-radius:50%;background:#${color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0}
+.hdr-name{font-weight:700;font-size:14px;color:#111}
+.hdr-status{font-size:11px;display:flex;align-items:center;gap:4px}
+.hdr-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.msg{max-width:85%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.45;word-break:break-word}
+.msg.mine{align-self:flex-end;background:#${color};color:#fff;border-bottom-right-radius:4px}
+.msg.theirs{align-self:flex-start;background:#f3f4f6;color:#111;border-bottom-left-radius:4px}
+.msg-time{font-size:9px;opacity:.6;margin-top:2px}
+.input-bar{padding:8px 10px;border-top:1px solid #e5e7eb;display:flex;gap:6px;flex-shrink:0;background:#fff}
+.input-bar input{flex:1;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:20px;font-size:13px;outline:none;font-family:inherit}
+.input-bar input:focus{border-color:#${color}}
+.input-bar button{width:34px;height:34px;border-radius:50%;border:none;background:#${color};color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.input-bar button:disabled{opacity:.4;cursor:default}
+.login-bar{padding:12px 14px;text-align:center;font-size:12px;color:#888;border-top:1px solid #e5e7eb;flex-shrink:0}
+.login-bar a{color:#${color};font-weight:600;text-decoration:none;cursor:pointer}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:13px;text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-avatar">${target.username[0].toUpperCase()}</div>
+  <div>
+    <div class="hdr-name">${target.username}</div>
+    <div class="hdr-status">
+      <span class="hdr-dot" id="statusDot" style="background:${isOnline ? '#22c55e' : '#999'}"></span>
+      <span id="statusText">${isOnline ? 'Online' : 'Offline'}</span>
+    </div>
+  </div>
+</div>
+<div class="msgs" id="msgs">
+  <div class="empty" id="emptyMsg">Send a message to start chatting</div>
+</div>
+<div id="authArea"></div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+var SERVER = ${JSON.stringify(server)};
+var TARGET = ${JSON.stringify(target.username)};
+var token = null;
+var myUsername = null;
+var socket = null;
+
+// Check for stored token
+try { token = localStorage.getItem('cv_pm_token'); } catch(e){}
+
+function initSocket() {
+  if (socket) socket.disconnect();
+  socket = io(SERVER.replace('http','ws').replace(':${config.port}',':${config.wsPort}'), {
+    auth: { token: token },
+    transports: ['websocket','polling'],
+  });
+  socket.on('connect', function(){
+    socket.emit('status_update',{status:'online'});
+  });
+  socket.on('message_signal', function(data){
+    if (data.fromUsername.toLowerCase() === TARGET.toLowerCase()) {
+      addMessage(data.message || {text: data.fromUsername+' sent a message'}, false);
+    }
+  });
+  socket.on('init', function(){});
+  socket.on('online_users', function(users){
+    var online = users.some(function(u){return u.username&&u.username.toLowerCase()===TARGET.toLowerCase()});
+    document.getElementById('statusDot').style.background = online?'#22c55e':'#999';
+    document.getElementById('statusText').textContent = online?'Online':'Offline';
+  });
+}
+
+function showLoggedIn(username) {
+  myUsername = username;
+  document.getElementById('authArea').innerHTML =
+    '<div class="input-bar">' +
+    '<input id="msgInput" placeholder="Message '+TARGET+'…" autocomplete="off"/>' +
+    '<button id="sendBtn" onclick="sendMsg()" disabled>&#9654;</button>' +
+    '</div>' +
+    '<div style="text-align:center;padding:4px;font-size:10px;color:#aaa">chatting as <b>'+username+'</b></div>';
+  var inp = document.getElementById('msgInput');
+  inp.addEventListener('input', function(){document.getElementById('sendBtn').disabled=!inp.value.trim()});
+  inp.addEventListener('keydown', function(e){if(e.key==='Enter'&&inp.value.trim())sendMsg()});
+}
+
+function showLoginPrompt() {
+  document.getElementById('authArea').innerHTML =
+    '<div class="login-bar">' +
+    '<a onclick="doLogin()">Log in</a> or <a href="'+SERVER+'" target="_blank">register</a> to send messages' +
+    '</div>';
+}
+
+function doLogin() {
+  var w = window.open(SERVER+'/widget-login','cv_login','width=380,height=480');
+  window.addEventListener('message', function handler(e){
+    if(e.data&&e.data.type==='CV_LOGIN'){
+      token = e.data.token;
+      myUsername = e.data.user.username;
+      try{localStorage.setItem('cv_pm_token',token)}catch(ex){}
+      window.removeEventListener('message',handler);
+      initSocket();
+      showLoggedIn(myUsername);
+    }
+  });
+}
+
+function sendMsg() {
+  var inp = document.getElementById('msgInput');
+  var text = inp.value.trim();
+  if (!text||!socket||!myUsername) return;
+  var msg = {id:Date.now()+'',fromUsername:myUsername,toUsername:TARGET,text:text,timestamp:Date.now()};
+  socket.emit('private_message',{toUsername:TARGET,message:msg});
+  addMessage(msg, true);
+  inp.value = '';
+  document.getElementById('sendBtn').disabled = true;
+}
+
+function addMessage(msg, mine) {
+  var el = document.getElementById('emptyMsg');
+  if(el) el.remove();
+  var msgs = document.getElementById('msgs');
+  var div = document.createElement('div');
+  div.className = 'msg '+(mine?'mine':'theirs');
+  div.textContent = msg.text||'';
+  var time = document.createElement('div');
+  time.className = 'msg-time';
+  time.textContent = new Date(msg.timestamp||Date.now()).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  div.appendChild(time);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Boot
+if (token) {
+  fetch(SERVER+'/api/me',{headers:{Authorization:'Bearer '+token}})
+    .then(function(r){if(!r.ok)throw 0;return r.json()})
+    .then(function(d){myUsername=d.user.username;initSocket();showLoggedIn(myUsername)})
+    .catch(function(){token=null;try{localStorage.removeItem('cv_pm_token')}catch(e){}showLoginPrompt()});
+} else {
+  showLoginPrompt();
+}
+
+// Poll status
+setInterval(function(){
+  fetch(SERVER+'/api/users/'+encodeURIComponent(TARGET))
+    .then(function(r){return r.json()})
+    .then(function(d){
+      var on=d.user&&d.user.online;
+      document.getElementById('statusDot').style.background=on?'#22c55e':'#999';
+      document.getElementById('statusText').textContent=on?'Online':'Offline';
+    }).catch(function(){});
+},20000);
+</script>
+</body></html>`);
+  });
+
   // ── REST API ─────────────────────────────────────────────────────────────
   app.use('/api', authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/groups', groupRoutes);
+  app.use('/api/groups', modRoutes);
+  app.use('/help', helpRoutes);
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

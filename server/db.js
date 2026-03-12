@@ -43,6 +43,9 @@ async function initDB() {
   // Run migrations
   migrate();
 
+  // Expose raw sql.js instance for moderation module
+  module.exports.__rawDb = db;
+
   // Save on process exit
   process.on('exit', saveToDisk);
   process.on('SIGINT', () => { saveToDisk(); process.exit(); });
@@ -99,9 +102,51 @@ function migrate() {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_blocks_blocker ON blocks(blocker_id)`);
 
+  // user settings (privacy, appearance, sounds)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id           TEXT PRIMARY KEY,
+      show_in_members   INTEGER NOT NULL DEFAULT 1,
+      allow_anon_pm     INTEGER NOT NULL DEFAULT 1,
+      pm_from           TEXT NOT NULL DEFAULT 'everyone',
+      save_conversations INTEGER NOT NULL DEFAULT 1,
+      msg_color         TEXT NOT NULL DEFAULT '',
+      msg_bg_color      TEXT NOT NULL DEFAULT '',
+      show_colors       INTEGER NOT NULL DEFAULT 1,
+      msg_sound         TEXT NOT NULL DEFAULT 'ping',
+      msg_volume        INTEGER NOT NULL DEFAULT 80
+    )
+  `);
+
+  // reports
+  db.run(`
+    CREATE TABLE IF NOT EXISTS reports (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      reporter_id TEXT NOT NULL,
+      target_id   TEXT NOT NULL,
+      reason      TEXT NOT NULL DEFAULT '',
+      context     TEXT NOT NULL DEFAULT '',
+      created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now')*1000)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_reports_target ON reports(target_id)`);
+
+  // restricted users (auto-restricted after enough reports)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS restricted_users (
+      user_id       TEXT PRIMARY KEY,
+      restricted_at INTEGER NOT NULL DEFAULT (strftime('%s','now')*1000),
+      reason        TEXT NOT NULL DEFAULT 'auto'
+    )
+  `);
+
   // group chat tables
   migrateGroups();
   migrateEmbedSettings();
+
+  // moderation tables
+  const moderation = require('./moderation');
+  moderation.migrateModeration(db);
 
   saveToDisk();
   
@@ -572,4 +617,89 @@ function upsertEmbedSettings(groupId, settings) {
 
 module.exports = Object.assign(module.exports, {
   migrateEmbedSettings, getEmbedSettings, upsertEmbedSettings,
+});
+
+// ─── User Settings ─────────────────────────────────────────────────────────────
+
+const DEFAULT_USER_SETTINGS = {
+  show_in_members:1, allow_anon_pm:1, pm_from:'everyone',
+  save_conversations:1, msg_color:'', msg_bg_color:'',
+  show_colors:1, msg_sound:'ping', msg_volume:80,
+};
+
+function getUserSettings(userId) {
+  const stmt = db.prepare(`SELECT * FROM user_settings WHERE user_id=?`);
+  stmt.bind([userId]);
+  const row = stmt.step() ? stmt.getAsObject() : null;
+  stmt.free();
+  return row || { user_id: userId, ...DEFAULT_USER_SETTINGS };
+}
+
+function updateUserSettings(userId, settings) {
+  const cur = getUserSettings(userId);
+  const m = { ...cur, ...settings, user_id: userId };
+  const stmt = db.prepare(`SELECT 1 FROM user_settings WHERE user_id=?`);
+  stmt.bind([userId]); const exists = stmt.step(); stmt.free();
+  if (exists) {
+    db.run(`UPDATE user_settings SET show_in_members=?,allow_anon_pm=?,pm_from=?,save_conversations=?,msg_color=?,msg_bg_color=?,show_colors=?,msg_sound=?,msg_volume=? WHERE user_id=?`,
+      [m.show_in_members,m.allow_anon_pm,m.pm_from,m.save_conversations,m.msg_color,m.msg_bg_color,m.show_colors,m.msg_sound,m.msg_volume,userId]);
+  } else {
+    db.run(`INSERT INTO user_settings (user_id,show_in_members,allow_anon_pm,pm_from,save_conversations,msg_color,msg_bg_color,show_colors,msg_sound,msg_volume) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [userId,m.show_in_members,m.allow_anon_pm,m.pm_from,m.save_conversations,m.msg_color,m.msg_bg_color,m.show_colors,m.msg_sound,m.msg_volume]);
+  }
+  scheduleSave();
+}
+
+// ─── Reports ───────────────────────────────────────────────────────────────────
+
+const REPORT_THRESHOLD = 5; // auto-restrict after this many unique reporters
+
+function reportUser(reporterId, targetId, reason, context) {
+  // Check if already reported by this user
+  const chk = db.prepare(`SELECT 1 FROM reports WHERE reporter_id=? AND target_id=?`);
+  chk.bind([reporterId, targetId]);
+  const already = chk.step(); chk.free();
+  if (already) return { alreadyReported: true };
+
+  db.run(`INSERT INTO reports (reporter_id,target_id,reason,context) VALUES (?,?,?,?)`,
+    [reporterId, targetId, reason||'', context||'']);
+
+  // Count unique reporters
+  const cnt = db.prepare(`SELECT COUNT(DISTINCT reporter_id) as n FROM reports WHERE target_id=?`);
+  cnt.bind([targetId]);
+  const row = cnt.step() ? cnt.getAsObject() : { n: 0 }; cnt.free();
+
+  // Auto-restrict if threshold met
+  if (row.n >= REPORT_THRESHOLD) {
+    restrictUser(targetId, 'auto: ' + row.n + ' reports');
+  }
+  scheduleSave();
+  return { alreadyReported: false, reportCount: row.n };
+}
+
+function getReportsForUser(targetId) {
+  const stmt = db.prepare(`SELECT r.*, u.username as reporter_name FROM reports r LEFT JOIN users u ON u.id=r.reporter_id WHERE r.target_id=? ORDER BY r.created_at DESC`);
+  stmt.bind([targetId]);
+  const rows = []; while (stmt.step()) rows.push(stmt.getAsObject()); stmt.free();
+  return rows;
+}
+
+function restrictUser(userId, reason) {
+  db.run(`INSERT OR REPLACE INTO restricted_users (user_id, reason) VALUES (?,?)`, [userId, reason||'']);
+  scheduleSave();
+}
+
+function unrestrictUser(userId) {
+  db.run(`DELETE FROM restricted_users WHERE user_id=?`, [userId]);
+  scheduleSave();
+}
+
+function isRestricted(userId) {
+  const stmt = db.prepare(`SELECT 1 FROM restricted_users WHERE user_id=?`);
+  stmt.bind([userId]); const r = stmt.step(); stmt.free(); return r;
+}
+
+module.exports = Object.assign(module.exports, {
+  getUserSettings, updateUserSettings,
+  reportUser, getReportsForUser, restrictUser, unrestrictUser, isRestricted,
 });

@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, UserPlus, Check, X, Sun, Moon, LogOut, Edit3, SlidersHorizontal, UserCheck, Settings, Globe } from 'lucide-react';
+import { Search, UserPlus, Check, X, Sun, Moon, LogOut, Edit3, SlidersHorizontal, UserCheck, Settings, Globe, HelpCircle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useTheme } from '../store/useTheme';
 import { getRecent } from '../utils/storage';
+import { navigate } from '../utils/navigate';
 import Avatar from './Avatar';
 import { formatDistanceToNowStrict } from 'date-fns';
 
@@ -219,7 +220,7 @@ function MembersTab() {
   const hasActiveFilters = filters.genderM || filters.genderF || filters.genderNB
     || filters.ageMin > 13 || filters.ageMax < 80 || filters.location !== '';
 
-  const others   = onlineUsers.filter(u => u.username !== currentUser?.username);
+  const others   = onlineUsers.filter(u => u.username !== currentUser?.username && !u._hidden);
   const filtered = others.filter(u => {
     if (search && !u.username.toLowerCase().includes(search.toLowerCase())
       && !u.location?.toLowerCase().includes(search.toLowerCase())) return false;
@@ -333,12 +334,22 @@ export default function Sidebar({ onEditProfile, onShowGroups, groupsActive }) {
   const { theme, toggle: toggleTheme } = useTheme();
   const [tab, setTab]           = useState('recent');
   const [statusOpen, setStatusOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const statusRef = useRef(null);
+  const menuRef = useRef(null);
 
   const handleStatusChange = (s) => {
     setMyStatus(s);
     socket?.emit('status_update', { status: s });
   };
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [menuOpen]);
 
   return (
     <div className={`sidebar ${!sidebarOpen ? 'hidden' : ''}`}>
@@ -359,14 +370,39 @@ export default function Sidebar({ onEditProfile, onShowGroups, groupsActive }) {
             {STATUS_LABELS[myStatus]}
           </div>
         </div>
-        <div style={{ display:'flex', gap:4 }}>
-          <button className="btn btn-ghost btn-icon" onClick={onEditProfile} title="Edit profile"><Edit3 size={15}/></button>
-          <button className="btn btn-ghost btn-icon" onClick={onShowGroups} title="Groups" style={{ color: groupsActive ? 'var(--accent)' : '' }}><Globe size={15}/></button>
-          <button className="btn btn-ghost btn-icon" onClick={() => setSettingsOpen(true)} title="Settings"><Settings size={15}/></button>
-          <button className="btn btn-ghost btn-icon" onClick={toggleTheme} title="Toggle theme">
-            {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
-          </button>
-          <button className="btn btn-ghost btn-icon" onClick={logout} title="Sign out"><LogOut size={15}/></button>
+        {/* Single menu button — Chatango style */}
+        <div style={{ position:'relative' }} ref={menuRef}>
+          <button className="btn btn-ghost btn-icon" onClick={() => setMenuOpen(v => !v)} title="Menu"
+            style={{ fontSize:18, padding:'4px 6px' }}>☰</button>
+          {menuOpen && (
+            <div style={{
+              position:'absolute', right:0, top:'calc(100% + 6px)',
+              background:'var(--surface)', border:'1px solid var(--border2)',
+              borderRadius:10, padding:6, zIndex:999, minWidth:200, width:'max-content',
+              boxShadow:'0 8px 30px rgba(0,0,0,.15)', animation:'fadeUp .15s ease',
+            }}>
+              <div className="dropdown-item" onClick={() => { onEditProfile(); setMenuOpen(false); }}>
+                <Edit3 size={14}/> Edit profile
+              </div>
+              <div className="dropdown-item" onClick={() => { onShowGroups(); setMenuOpen(false); }}>
+                <Globe size={14}/> Groups
+              </div>
+              <div className="dropdown-item" onClick={() => { setSettingsOpen(true); setMenuOpen(false); }}>
+                <Settings size={14}/> Settings
+              </div>
+              <div className="dropdown-item" onClick={() => { navigate('/help'); setMenuOpen(false); }}>
+                <HelpCircle size={14}/> Help
+              </div>
+              <div className="dropdown-item" onClick={() => { toggleTheme(); setMenuOpen(false); }}>
+                {theme === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
+                {theme === 'dark' ? ' Light mode' : ' Dark mode'}
+              </div>
+              <div style={{ borderTop:'1px solid var(--border)', margin:'4px 0' }} />
+              <div className="dropdown-item" onClick={logout} style={{ color:'var(--red)' }}>
+                <LogOut size={14}/> Log out
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -67,7 +67,7 @@ export default function LandingPage({ onGetStarted, forceAuth = false }) {
       <nav style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 40px', height:60, borderBottom:'1px solid #f0f0f0', position:'sticky', top:0, background:'#fff', zIndex:100 }}>
         <div style={{ fontSize:26, fontWeight:300, color:'#2196F3', letterSpacing:-.5 }}>chatavar</div>
         <div style={{ display:'flex', alignItems:'center', gap:28 }}>
-          <a href="#features" style={{ color:'#555', textDecoration:'none', fontSize:14 }}>Help</a>
+          <a onClick={() => { window.location.href = '/help'; }} style={{ color:'#555', textDecoration:'none', fontSize:14, cursor:'pointer' }}>Help</a>
           <button onClick={() => setShowAuth(true)} style={{ background:'none', border:'none', color:'#555', fontSize:14, cursor:'pointer', padding:0 }}>
             Log in
           </button>
@@ -178,7 +178,8 @@ export default function LandingPage({ onGetStarted, forceAuth = false }) {
 
       {/* ── Footer ── */}
       <div style={{ display:'flex', justifyContent:'flex-end', padding:'16px 40px', borderTop:'1px solid #f0f0f0', gap:24 }}>
-        {['Help','Terms of use','Privacy policy','About us'].map(l => (
+        <a onClick={() => { window.location.href = '/help'; }} style={{ color:'#2196F3', textDecoration:'none', fontSize:13, cursor:'pointer' }}>Help</a>
+        {['Terms of use','Privacy policy','About us'].map(l => (
           <a key={l} href="#" style={{ color:'#2196F3', textDecoration:'none', fontSize:13 }}>{l}</a>
         ))}
       </div>
